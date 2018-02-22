@@ -3,6 +3,8 @@
 
 A simple RPN calculator in Pyton
 
+[![Build Status](https://travis-ci.org/mike-jg/rpn.svg?branch=master)](https://travis-ci.org/mike-jg/rpn)
+
 ### Installing and running
 
 Run the tests:
