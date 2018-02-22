@@ -1,7 +1,7 @@
 
 # RPN Calculator
 
-A simple RPN calculator in Pyton
+A simple RPN calculator in Python
 
 [![Build Status](https://travis-ci.org/mike-jg/rpn.svg?branch=master)](https://travis-ci.org/mike-jg/rpn)
 
