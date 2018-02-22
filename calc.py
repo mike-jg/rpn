@@ -76,92 +76,94 @@ class Token:
 # the Lexer converts the input into a list of tokens
 class Lexer:
     def __init__(self, str):
-        self.str = str
-        self.pos = 0
-        self.tokens = []
+        self._str = str
+        self._pos = 0
+        self._tokens = []
 
     def tokenize(self):
-        self.tokens = []
+        self._tokens = []
 
-        while not self.is_at_end():
-            self.parse_char()
+        while not self._is_at_end():
+            self._parse_char()
 
-        return self.tokens
+        return self._tokens
 
-    def parse_char(self):
-        char = self.peek()
+    def _parse_char(self):
+        char = self._peek()
 
         if char.isnumeric() or char == ".":
-            self.number()
+            self._number()
 
-        elif char in "+-/*^":
-            self.possible_operator(char)
+        elif char in "/*^":
+            self._operator()
+
+        elif char in "+-":
+            self._possible_operator(char)
 
         elif char.isalpha():
-            self.function()
+            self._function()
 
         elif char not in " ":
-            raise InvalidInputError(char, self.pos + 1)
+            raise InvalidInputError(char, self._pos + 1)
 
         else:
-            self.advance()
+            self._advance()
 
-    def possible_operator(self, char):
-        if char in "-+" and (self.peek1().isnumeric() or self.peek1() == "."):
-            self.number()
+    def _possible_operator(self, char):
+        if char in "-+" and (self._peek1().isnumeric() or self._peek1() == "."):
+            self._number()
 
         else:
-            self.tokens.append(Token(char, self.pos + 1, Token.OPERATOR))
-            self.advance()
+            self._operator()
 
-    def peek(self):
-        return self.str[self.pos]
+    def _operator(self):
+        self._tokens.append(Token(self._peek(), self._pos + 1, Token.OPERATOR))
+        self._advance()
 
-    def peek1(self):
-        if self.pos + 1 < len(self.str):
-            return self.str[self.pos + 1]
+    def _peek(self):
+        return self._str[self._pos]
+
+    def _peek1(self):
+        if self._pos + 1 < len(self._str):
+            return self._str[self._pos + 1]
         return ""
 
-    def advance(self):
-        self.pos = self.pos + 1
+    def _advance(self):
+        self._pos = self._pos + 1
 
-    def function(self):
+    def _function(self):
         lexeme = ""
-        while not self.is_at_end() and self.peek().isalpha():
-            lexeme = lexeme + self.peek()
-            self.advance()
+        while not self._is_at_end() and self._peek().isalpha():
+            lexeme = lexeme + self._peek()
+            self._advance()
 
-        self.tokens.append(Token(lexeme, self.pos - len(lexeme) + 1, Token.FUNCTION))
+        self._tokens.append(Token(lexeme, self._pos - len(lexeme) + 1, Token.FUNCTION))
 
-    def number(self):
-        lexeme = ""
-        negative = self.peek() == "-"
-        if (negative or self.peek() == "+"):
-            self.advance()
+    def _number(self):
+        lexeme = self._peek()
+        self._advance()
 
         found_dot = False
 
-        while not self.is_at_end() and (self.peek().isnumeric() or self.peek() == "."):
-            if self.peek() == ".":
+        while not self._is_at_end() and (self._peek().isnumeric() or self._peek() == "."):
+            if self._peek() == ".":
                 # found two dots in one number, so fail
                 if found_dot == True:
-                    raise InvalidInputError(self.peek(), self.pos + 1)
+                    raise InvalidInputError(self._peek(), self._pos + 1)
                 found_dot = True
 
-            lexeme = lexeme + self.peek()
-            self.advance()
+            lexeme = lexeme + self._peek()
+            self._advance()
 
         num = float(lexeme)
-        if negative:
-            num = -num
 
-        self.tokens.append(Token(num, self.pos - len(lexeme) + 1, Token.NUMBER))
+        self._tokens.append(Token(num, self._pos - len(lexeme) + 1, Token.NUMBER))
 
-    def is_at_end(self):
-        return self.pos == len(self.str)
+    def _is_at_end(self):
+        return self._pos == len(self._str)
 
     def __str__(self):
-        return "{:d} {:s} '{:s}' {:d}".format(self.pos, str(self.tokens), self.str, len(self.str))
+        return "{:d} {:s} '{:s}' {:d}".format(self._pos, str(self._tokens), self._str, len(self._str))
 
 # interpreter executes the commands in the list of tokens
 # number literals are added to the stack
@@ -169,95 +171,108 @@ class Lexer:
 class Interpreter:
 
     def __init__(self, tokens, stack = None):
-        self.tokens = tokens
+        self._tokens = tokens
 
         # default args accumulate for mutable objects
         # https://docs.python.org/3/tutorial/controlflow.html#default-argument-values
         if stack is None:
             stack = []
-        self.stack = stack
+        self._stack = stack
         self.printed = False
 
+        self._func_map = {
+                "sqrt": self._sqrt,
+                "print": self._print,
+                "stack": self._do_stack,
+                "pop": self._pop,
+                "clear": self._clear
+            }
+
+    # interpret the given tokens,
+    # returns whatever's left at the top of the stack
     def interpret(self):
 
         # remember current stack state
-        old_stack = self.stack.copy()
+        old_stack = self._stack.copy()
 
         try:
-            self.do_interpret()
+            self._interpret()
         except CalcError as err:
             # reset the stack to the remembered state it was in before the error
             # this gives an opportunity to rerun the same command and fix typos
             # without accidentally messing up the state of the stack
-            self.stack.clear()
-            self.stack.extend(old_stack)
+            self._stack.clear()
+            self._stack.extend(old_stack)
             raise err
 
-        if len(self.stack) > 0:
-            return self.stack[-1]
+        if len(self._stack) > 0:
+            return self._stack[-1]
 
         return None
 
-    def do_interpret(self):
-        for token in self.tokens:
+    def _interpret(self):
+
+        for token in self._tokens:
 
             if token.type == Token.OPERATOR:
-                self.operator(token)
+                self._operator(token)
 
             elif token.type == Token.NUMBER:
-                self.stack.append(token.lexeme)
+                self._stack.append(token.lexeme)
 
             elif token.type == Token.FUNCTION:
-                self.function(token)
+                self._function(token)
 
-    def function(self, token):
-        func = token.lexeme.lower();
+    def _function(self, token):
+        func = token.lexeme.lower()
+        func_def = self._func_map.get(func, lambda: self._bad_function_call(token))
+        func_def()
 
-        if func == "sqrt":
-            self.assert_stack_len(1)
-            op = self.stack.pop()
-            self.stack.append(math.sqrt(abs(op)))
+    def _bad_function_call(self, token):
+        raise InvalidFunctionCallError(token)
 
-        elif func == "print":
-            self.assert_stack_len(1)
-            print(self.stack[-1])
-            self.printed = True
+    def _sqrt(self):
+        self._assert_stack_len(1)
+        op = self._stack.pop()
+        self._stack.append(math.sqrt(abs(op)))
 
-        elif func == "stack":
-            print(self.stack)
-            self.printed = True
+    def _print(self):
+        self._assert_stack_len(1)
+        print(self._stack[-1])
+        self.printed = True
 
-        elif func == "pop":
-            self.assert_stack_len(1)
-            self.stack.pop()
+    def _do_stack(self):
+        print(self._stack)
+        self.printed = True
 
-        elif func == "clear":
-            self.stack.clear()
+    def _pop(self):
+        self._assert_stack_len(1)
+        self._stack.pop()
 
-        else:
-            raise InvalidFunctionCallError(token)
+    def _clear(self):
+        self._stack.clear()
 
-    def operator(self, token):
-        self.assert_stack_len(2)
-        rightOp = self.stack.pop()
-        leftOp = self.stack.pop()
+    def _operator(self, token):
+        self._assert_stack_len(2)
+        rightOp = self._stack.pop()
+        leftOp = self._stack.pop()
 
         if token.lexeme == "+":
-            self.stack.append(leftOp + rightOp)
+            self._stack.append(leftOp + rightOp)
         if token.lexeme == "-":
-            self.stack.append(leftOp - rightOp)
+            self._stack.append(leftOp - rightOp)
         if token.lexeme == "/":
-            self.stack.append(leftOp / rightOp)
+            self._stack.append(leftOp / rightOp)
         if token.lexeme == "*":
-            self.stack.append(leftOp * rightOp)
+            self._stack.append(leftOp * rightOp)
         if token.lexeme == "^":
-            self.stack.append(math.pow(leftOp, rightOp))
+            self._stack.append(math.pow(leftOp, rightOp))
 
     # check that the stack is of the required length
     # this is because all operations require the stack to be
     # a certain minimum length
-    def assert_stack_len(self, required):
-        stacklen = len(self.stack)
+    def _assert_stack_len(self, required):
+        stacklen = len(self._stack)
         if stacklen < required:
             raise InvalidStackError("Stack is of insufficient length. Length is currently {:d}, a minimum length of {:d} is required.".format(stacklen, required))
 
